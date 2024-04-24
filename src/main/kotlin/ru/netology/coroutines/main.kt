@@ -5,10 +5,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
 import okhttp3.*
 import okhttp3.logging.HttpLoggingInterceptor
-import ru.netology.coroutines.dto.Author
-import ru.netology.coroutines.dto.Comment
-import ru.netology.coroutines.dto.Post
-import ru.netology.coroutines.dto.PostWithComments
+import ru.netology.coroutines.dto.*
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.EmptyCoroutineContext
@@ -152,19 +149,34 @@ fun main() {
                     .flatten()
                     .distinct()
                     .map { authorId ->
-                        async {  getAuthorById(authorId) }
+                        async {  getAuthor(authorId) }
                     }.awaitAll()
 
                 println(posts)
                 println(authors)
+
+                val postsWithAuthorAndComments = posts.map {postWithComments ->
+                    async {
+                        PostWithAuthorAndComments(postWithComments.post,
+                            getAuthorById(authors, postWithComments.post.authorId),
+                            postWithComments.comments.map { comment ->
+                                CommentWithAuthor(comment, getAuthorById(authors, comment.authorId))
+                            }
+                            )
+                    }
+                }.awaitAll()
+
+                println(postsWithAuthorAndComments)
 
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
+
     Thread.sleep(30_000L)
 }
+fun getAuthorById(authors: List<Author>, id:Long)  = authors.find { it.id == id }!!
 
 suspend fun OkHttpClient.apiCall(url: String): Response {
     return suspendCoroutine { continuation ->
@@ -183,7 +195,6 @@ suspend fun OkHttpClient.apiCall(url: String): Response {
             })
     }
 }
-
 suspend fun <T> makeRequest(url: String, client: OkHttpClient, typeToken: TypeToken<T>): T =
     withContext(Dispatchers.IO) {
         client.apiCall(url)
@@ -203,5 +214,5 @@ suspend fun getPosts(client: OkHttpClient): List<Post> =
 suspend fun getComments(client: OkHttpClient, id: Long): List<Comment> =
     makeRequest("$BASE_URL/api/slow/posts/$id/comments", client, object : TypeToken<List<Comment>>() {})
 
-suspend fun getAuthorById(authorId: Long): Author =
+suspend fun getAuthor(authorId: Long): Author =
     makeRequest("$BASE_URL/api/slow/authors/$authorId", client, object : TypeToken<Author>() {})
